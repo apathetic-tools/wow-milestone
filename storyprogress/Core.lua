@@ -6,13 +6,18 @@ local addonName, addonTable = ...
 local StoryProgress = {}
 addonTable.StoryProgress = StoryProgress
 
--- Debug flag - set to true to enable detailed logging
-StoryProgress.DEBUG = true
+-- Per-function debug flags - set to true to enable logging for a specific function
+local debugFlags = {}
 
-local function DebugLog(message)
-    if StoryProgress.DEBUG then
-        print("|cFF00FF00[" .. addonName .. " DEBUG]|r " .. message)
+local function DebugLog(functionName, message)
+    if debugFlags[functionName] then
+        print("|cFF00FF00[" .. addonName .. " DEBUG:" .. functionName .. "]|r " .. message)
     end
+end
+
+-- Helper to enable/disable debug for a specific function
+function StoryProgress:SetDebug(functionName, enabled)
+    debugFlags[functionName] = enabled or false
 end
 
 local function Log(message)
@@ -20,6 +25,7 @@ local function Log(message)
 end
 
 local function CountQuestsRecursive(item, character, database, depth, visited)
+    local funcName = "CountQuestsRecursive"
     depth = depth or 0
     visited = visited or {}
     local indent = string.rep("  ", depth)
@@ -28,42 +34,42 @@ local function CountQuestsRecursive(item, character, database, depth, visited)
 
     -- Prevent infinite recursion with depth limit
     if depth > 20 then
-        DebugLog(indent .. "WARNING: Max recursion depth reached")
+        DebugLog(funcName, indent .. "WARNING: Max recursion depth reached")
         return 0, 0
     end
 
     if not item or not item.type then
-        DebugLog(indent .. "WARNING: Invalid item (no type)")
+        DebugLog(funcName, indent .. "WARNING: Invalid item (no type)")
         return 0, 0
     end
 
     if item.type == "quest" then
         if not item.id then
-            DebugLog(indent .. "WARNING: Quest item has no id")
+            DebugLog(funcName, indent .. "WARNING: Quest item has no id")
             return 0, 0
         end
         total = 1
         if character:IsQuestCompleted(item.id) then
             completed = 1
-            DebugLog(indent .. "Quest " .. item.id .. ": COMPLETED")
+            DebugLog(funcName, indent .. "Quest " .. item.id .. ": COMPLETED")
         else
-            DebugLog(indent .. "Quest " .. item.id .. ": pending")
+            DebugLog(funcName, indent .. "Quest " .. item.id .. ": pending")
         end
     elseif item.type == "chain" then
         if not item.id then
-            DebugLog(indent .. "WARNING: Chain item has no id")
+            DebugLog(funcName, indent .. "WARNING: Chain item has no id")
             return 0, 0
         end
         -- Check for circular reference
         local key = "chain:" .. item.id
         if visited[key] then
-            DebugLog(indent .. "WARNING: Circular reference detected for chain " .. item.id)
+            DebugLog(funcName, indent .. "WARNING: Circular reference detected for chain " .. item.id)
             return 0, 0
         end
         visited[key] = true
 
         local chain = database:GetChainByID(item.id)
-        DebugLog(indent .. "Chain " .. item.id .. ": starting")
+        DebugLog(funcName, indent .. "Chain " .. item.id .. ": starting")
         if chain and chain.items then
             for _, subItem in ipairs(chain.items) do
                 local c, t = CountQuestsRecursive(subItem, character, database, depth + 1, visited)
@@ -71,23 +77,23 @@ local function CountQuestsRecursive(item, character, database, depth, visited)
                 total = total + t
             end
         else
-            DebugLog(indent .. "  WARNING: Chain " .. item.id .. " has no items or doesn't exist")
+            DebugLog(funcName, indent .. "  WARNING: Chain " .. item.id .. " has no items or doesn't exist")
         end
     elseif item.type == "category" then
         if not item.id then
-            DebugLog(indent .. "WARNING: Category item has no id")
+            DebugLog(funcName, indent .. "WARNING: Category item has no id")
             return 0, 0
         end
         -- Check for circular reference
         local key = "category:" .. item.id
         if visited[key] then
-            DebugLog(indent .. "WARNING: Circular reference detected for category " .. item.id)
+            DebugLog(funcName, indent .. "WARNING: Circular reference detected for category " .. item.id)
             return 0, 0
         end
         visited[key] = true
 
         local category = database:GetCategoryByID(item.id)
-        DebugLog(indent .. "Category " .. item.id .. ": starting")
+        DebugLog(funcName, indent .. "Category " .. item.id .. ": starting")
         if category and category.items then
             for _, subItem in ipairs(category.items) do
                 local c, t = CountQuestsRecursive(subItem, character, database, depth + 1, visited)
@@ -95,121 +101,137 @@ local function CountQuestsRecursive(item, character, database, depth, visited)
                 total = total + t
             end
         else
-            DebugLog(indent .. "  WARNING: Category " .. item.id .. " has no items or doesn't exist")
+            DebugLog(funcName, indent .. "  WARNING: Category " .. item.id .. " has no items or doesn't exist")
         end
     else
-        DebugLog(indent .. "UNKNOWN item type: " .. tostring(item.type))
+        DebugLog(funcName, indent .. "UNKNOWN item type: " .. tostring(item.type))
     end
 
     return completed, total
 end
 
 local function LoadExpansionAddon(expansionID)
-    DebugLog("Loading expansion addon for ID " .. expansionID)
+    local funcName = "LoadExpansionAddon"
+    DebugLog(funcName, "Loading expansion addon for ID " .. expansionID)
 
     if not BtWQuestsDatabase then
-        DebugLog("ERROR: BtWQuestsDatabase not available")
+        DebugLog(funcName, "ERROR: BtWQuestsDatabase not available")
         return false
     end
 
     local expansion = BtWQuestsDatabase:GetExpansionByID(expansionID)
     if not expansion then
-        DebugLog("Expansion ID " .. expansionID .. " not found in database")
+        DebugLog(funcName, "Expansion ID " .. expansionID .. " not found in database")
         return false
     end
 
-    DebugLog("Checking if expansion is loaded...")
+    DebugLog(funcName, "Checking if expansion is loaded...")
     if not expansion:IsLoaded() then
-        DebugLog("Expansion not loaded, attempting to load...")
+        DebugLog(funcName, "Expansion not loaded, attempting to load...")
         expansion:Load()
     else
-        DebugLog("Expansion already loaded")
+        DebugLog(funcName, "Expansion already loaded")
     end
 
     local finalCheck = expansion:IsLoaded()
-    DebugLog("Final check - expansion loaded: " .. tostring(finalCheck))
+    DebugLog(funcName, "Final check - expansion loaded: " .. tostring(finalCheck))
     return finalCheck
 end
 
 local function GetExpansionProgress(expansionID, expansionName)
-    DebugLog("Getting progress for expansion " .. tostring(expansionID) .. " (" .. (expansionName or "unknown") .. ")")
+    local funcName = "GetExpansionProgress"
+    DebugLog(funcName, "Getting progress for expansion " .. tostring(expansionID) .. " (" .. (expansionName or "unknown") .. ")")
 
     -- Load the expansion addon if needed
     if not LoadExpansionAddon(expansionID) then
-        DebugLog("Failed to load expansion addon")
+        DebugLog(funcName, "Failed to load expansion addon")
         return nil
     end
 
-    DebugLog("Checking if BtWQuestsDatabase is available...")
+    DebugLog(funcName, "Checking if BtWQuestsDatabase is available...")
     if not BtWQuestsDatabase then
-        DebugLog("  ERROR: BtWQuestsDatabase not available")
+        DebugLog(funcName, "  ERROR: BtWQuestsDatabase not available")
         return nil
     end
-    DebugLog("  BtWQuestsDatabase found")
+    DebugLog(funcName, "  BtWQuestsDatabase found")
 
     local database = BtWQuestsDatabase
     local expansion = database:GetExpansionByID(expansionID)
 
     if not expansion then
-        DebugLog("Expansion ID " .. expansionID .. " not found in database")
+        DebugLog(funcName, "Expansion ID " .. expansionID .. " not found in database")
         return nil
     end
-    DebugLog("Expansion found in database")
+    DebugLog(funcName, "Expansion found in database")
 
-    DebugLog("Getting player character...")
+    DebugLog(funcName, "Getting player character...")
     local character = BtWQuestsCharacters:GetPlayer()
     if not character then
-        DebugLog("  ERROR: Could not get player character")
+        DebugLog(funcName, "  ERROR: Could not get player character")
         return nil
     end
-    DebugLog("  Player character obtained")
+    DebugLog(funcName, "  Player character obtained")
 
     local completed = 0
     local total = 0
 
     if expansion.items then
-        DebugLog("Expansion has " .. #expansion.items .. " top-level items")
+        DebugLog(funcName, "Expansion has " .. #expansion.items .. " top-level items")
         for idx, item in ipairs(expansion.items) do
-            DebugLog("Processing expansion item " .. idx .. " (type: " .. (item.type or "unknown") .. ", id: " .. (item.id or "?") .. ")")
+            DebugLog(funcName, "Processing expansion item " .. idx .. " (type: " .. (item.type or "unknown") .. ", id: " .. (item.id or "?") .. ")")
             local c, t = CountQuestsRecursive(item, character, database)
             completed = completed + c
             total = total + t
-            DebugLog("  Subtotal: " .. c .. "/" .. t .. " (running total: " .. completed .. "/" .. total .. ")")
+            DebugLog(funcName, "  Subtotal: " .. c .. "/" .. t .. " (running total: " .. completed .. "/" .. total .. ")")
         end
     else
-        DebugLog("WARNING: Expansion has no items")
+        DebugLog(funcName, "WARNING: Expansion has no items")
     end
 
-    DebugLog("GetExpansionProgress about to return: completed=" .. completed .. ", total=" .. total)
+    DebugLog(funcName, "GetExpansionProgress about to return: completed=" .. completed .. ", total=" .. total)
     return completed, total
 end
 
 function StoryProgress:PrintProgress(expansionName, expansionID)
-    DebugLog("PrintProgress called for: " .. expansionName .. " (ID: " .. expansionID .. ")")
-    Log("Querying progress for " .. expansionName .. "...")
+    local funcName = "PrintProgress"
+    DebugLog(funcName, "PrintProgress called for: " .. expansionName .. " (ID: " .. expansionID .. ")")
+    DebugLog(funcName, "Querying progress for " .. expansionName .. "...")
 
     local completed, total = GetExpansionProgress(expansionID, expansionName)
-    DebugLog("GetExpansionProgress returned: completed=" .. tostring(completed) .. ", total=" .. tostring(total))
+    DebugLog(funcName, "GetExpansionProgress returned: completed=" .. tostring(completed) .. ", total=" .. tostring(total))
 
     if not completed or not total then
         Log("Could not retrieve data for " .. expansionName)
         return
     end
 
-    DebugLog("About to format and print summary line...")
+    DebugLog(funcName, "About to format and print summary line...")
     local percentage = (total > 0) and math.floor((completed / total) * 100) or 0
-    DebugLog("Calculated percentage: " .. tostring(percentage))
+    DebugLog(funcName, "Calculated percentage: " .. tostring(percentage))
 
     local success, err = pcall(function()
         local line = string.format("%s: %d of %d quests (%d%%)", expansionName, completed, total, percentage)
-        DebugLog("Formatted line: " .. line)
+        DebugLog(funcName, "Formatted line: " .. line)
         Log(line)
     end)
 
     if not success then
-        DebugLog("ERROR formatting/printing summary: " .. tostring(err))
+        DebugLog(funcName, "ERROR formatting/printing summary: " .. tostring(err))
     end
-    DebugLog("PrintProgress completed")
+    DebugLog(funcName, "PrintProgress completed")
+end
+
+function StoryProgress:CalculateAllExpansions()
+    local expansions = {
+        { name = "Shadowlands", id = 8 },
+        { name = "Battle for Azeroth", id = 7 },
+        { name = "Dragonflight", id = 10 },
+        { name = "The War Within", id = 9 },
+    }
+
+    for _, expansion in ipairs(expansions) do
+        GetExpansionProgress(expansion.id, expansion.name)
+    end
 end
 
 function StoryProgress:PrintAllExpansions()
@@ -229,19 +251,15 @@ end
 
 function StoryProgress:OnLoad()
     Log("Addon loaded!")
-    self:PrintAllExpansions()
+    self:CalculateAllExpansions()
 end
 
 -- Slash command handler
 SLASH_STORYPROGRESS1 = "/storyprogress"
 
-SlashCmdList["STORYPROGRESS"] = function(msg)
-    if msg == "debug" then
-        StoryProgress.DEBUG = not StoryProgress.DEBUG
-        Log("Debug mode: " .. (StoryProgress.DEBUG and "ON" or "OFF"))
-    else
-        StoryProgress:PrintAllExpansions()
-    end
+SlashCmdList["STORYPROGRESS"] = function()
+    StoryProgress:CalculateAllExpansions()
+    StoryProgress:PrintAllExpansions()
 end
 
 -- Register for addon load event
