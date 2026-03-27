@@ -29,8 +29,8 @@
 			"utf8": "disable"
 		},
 		"Lua.workspace.library": [
-			"~/.vscode-server/extensions/ketho.wow-api-0.22.3/Annotations/Core",
-			"./_reference/BtWQuests"
+			"./_reference/BtWQuests",
+			"~/.vscode-server/extensions/ketho.wow-api-0.22.3/Annotations/Core"
 		],
 		"Lua.diagnostics.globals": [
 			"SlashCmdList",

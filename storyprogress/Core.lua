@@ -192,33 +192,35 @@ local function GetExpansionProgress(expansionID, expansionName)
     return completed, total
 end
 
-function StoryProgress:PrintProgress(expansionName, expansionID)
-    local funcName = "PrintProgress"
-    DebugLog(funcName, "PrintProgress called for: " .. expansionName .. " (ID: " .. expansionID .. ")")
-    DebugLog(funcName, "Querying progress for " .. expansionName .. "...")
+function StoryProgress:GetProgressText(expansionName, expansionID)
+    local funcName = "GetProgressText"
+    DebugLog(funcName, "GetProgressText called for: " .. expansionName .. " (ID: " .. expansionID .. ")")
 
     local completed, total = GetExpansionProgress(expansionID, expansionName)
     DebugLog(funcName, "GetExpansionProgress returned: completed=" .. tostring(completed) .. ", total=" .. tostring(total))
 
     if not completed or not total then
-        Log("Could not retrieve data for " .. expansionName)
-        return
+        return "Could not retrieve data for " .. expansionName .. "\n"
     end
 
-    DebugLog(funcName, "About to format and print summary line...")
+    DebugLog(funcName, "About to format summary line...")
     local percentage = (total > 0) and math.floor((completed / total) * 100) or 0
     DebugLog(funcName, "Calculated percentage: " .. tostring(percentage))
 
-    local success, err = pcall(function()
-        local line = string.format("%s: %d%% (%d of %d quests)", expansionName, percentage, completed, total)
-        DebugLog(funcName, "Formatted line: " .. line)
-        Log(line)
+    local success, result, err
+    success, result, err = pcall(function()
+        return string.format("%s: %d%% (%d of %d quests)\n", expansionName, percentage, completed, total)
     end)
 
     if not success then
-        DebugLog(funcName, "ERROR formatting/printing summary: " .. tostring(err))
+        DebugLog(funcName, "ERROR formatting summary: " .. tostring(err))
+        return ""
     end
-    DebugLog(funcName, "PrintProgress completed")
+    return result
+end
+
+function StoryProgress:PrintProgress(expansionName, expansionID)
+    Log(string.gsub(self:GetProgressText(expansionName, expansionID), "\n", ""))
 end
 
 function StoryProgress:CalculateAllExpansions()
@@ -227,12 +229,92 @@ function StoryProgress:CalculateAllExpansions()
     end
 end
 
+function StoryProgress:GetAllExpansionsText()
+    local text = "=== Story Progress Summary ===\n"
+    for _, expansion in ipairs(BtWQuestsDatabase:GetExpansionList()) do
+        text = text .. self:GetProgressText(expansion:GetName(), expansion:GetID())
+    end
+    text = text .. "==============================\n"
+    return text
+end
+
 function StoryProgress:PrintAllExpansions()
     Log("=== Story Progress Summary ===")
     for _, expansion in ipairs(BtWQuestsDatabase:GetExpansionList()) do
         self:PrintProgress(expansion:GetName(), expansion:GetID())
     end
     Log("==============================")
+end
+
+function StoryProgress:CreateGUI()
+    if self.mainFrame and self.mainFrame:IsShown() then
+        self.mainFrame:Hide()
+        return
+    end
+
+    -- Create main window
+    local mainFrame = CreateFrame("Frame", "StoryProgressMainFrame", UIParent, "BackdropTemplate")
+    mainFrame:SetSize(500, 400)
+    mainFrame:SetPoint("CENTER")
+    mainFrame:SetBackdrop({
+        bgFile = "Interface/Tooltips/UI-Tooltip-Background",
+        edgeFile = "Interface/Tooltips/UI-Tooltip-Border",
+        tile = true,
+        tileSize = 16,
+        edgeSize = 16,
+        insets = {left = 4, right = 4, top = 4, bottom = 4}
+    })
+    mainFrame:SetBackdropColor(0, 0, 0, 0.8)
+    mainFrame:SetBackdropBorderColor(1, 1, 1, 0.3)
+    mainFrame:SetMovable(true)
+    mainFrame:EnableMouse(true)
+    mainFrame:RegisterForDrag("LeftButton")
+    mainFrame:SetScript("OnDragStart", mainFrame.StartMoving)
+    mainFrame:SetScript("OnDragStop", mainFrame.StopMovingOrSizing)
+
+    -- Create title bar
+    local titleBar = mainFrame:CreateFontString(nil, "OVERLAY")
+    titleBar:SetFont("Fonts/FRIZQT__.TTF", 14, "OUTLINE")
+    titleBar:SetPoint("TOPLEFT", mainFrame, "TOPLEFT", 10, -10)
+    titleBar:SetText("Story Progress")
+    titleBar:SetTextColor(1, 1, 0, 1)
+
+    -- Create close button
+    local closeBtn = CreateFrame("Button", nil, mainFrame, "UIPanelCloseButton")
+    closeBtn:SetPoint("TOPRIGHT", mainFrame, "TOPRIGHT", -5, -5)
+
+    -- Create scroll frame
+    local scrollFrame = CreateFrame("ScrollFrame", nil, mainFrame)
+    scrollFrame:SetPoint("TOPLEFT", mainFrame, "TOPLEFT", 10, -35)
+    scrollFrame:SetPoint("BOTTOMRIGHT", mainFrame, "BOTTOMRIGHT", -10, 10)
+    scrollFrame:SetScript("OnMouseWheel", function(scrollSelf, delta)
+        local newValue = scrollSelf:GetVerticalScroll() - delta * 20
+        scrollSelf:SetVerticalScroll(max(0, min(newValue, scrollSelf.scrollChild:GetHeight() - scrollSelf:GetHeight())))
+    end)
+    scrollFrame:EnableMouseWheel(true)
+
+    -- Create text frame for scrolling content
+    local textFrame = CreateFrame("Frame", nil, scrollFrame)
+    textFrame:SetSize(scrollFrame:GetWidth(), 1)
+    scrollFrame:SetScrollChild(textFrame)
+
+    -- Create the text display
+    local textDisplay = textFrame:CreateFontString(nil, "OVERLAY")
+    textDisplay:SetFont("Fonts/FRIZQT__.TTF", 11, "OUTLINE")
+    textDisplay:SetPoint("TOPLEFT", textFrame, "TOPLEFT", 5, -5)
+    textDisplay:SetPoint("RIGHT", textFrame, "RIGHT", -10, 0)
+    textDisplay:SetJustifyH("LEFT")
+    textDisplay:SetJustifyV("TOP")
+    textDisplay:SetTextColor(1, 1, 1, 1)
+
+    -- Set the progress text
+    local progressText = self:GetAllExpansionsText()
+    textDisplay:SetText(progressText)
+    textFrame:SetHeight(textDisplay:GetHeight() + 10)
+    scrollFrame:UpdateScrollChildRect()
+
+    self.mainFrame = mainFrame
+    mainFrame:Show()
 end
 
 function StoryProgress:OnLoad()
@@ -244,8 +326,7 @@ end
 SLASH_STORYPROGRESS1 = "/storyprogress"
 
 SlashCmdList["STORYPROGRESS"] = function()
-    StoryProgress:CalculateAllExpansions()
-    StoryProgress:PrintAllExpansions()
+    StoryProgress:CreateGUI()
 end
 
 -- Register for addon load event
