@@ -210,7 +210,7 @@ function StoryProgress:PrintProgress(expansionName, expansionID)
     DebugLog(funcName, "Calculated percentage: " .. tostring(percentage))
 
     local success, err = pcall(function()
-        local line = string.format("%s: %d of %d quests (%d%%)", expansionName, completed, total, percentage)
+        local line = string.format("%s: %d%% (%d of %d quests)", expansionName, percentage, completed, total)
         DebugLog(funcName, "Formatted line: " .. line)
         Log(line)
     end)
@@ -222,29 +222,15 @@ function StoryProgress:PrintProgress(expansionName, expansionID)
 end
 
 function StoryProgress:CalculateAllExpansions()
-    local expansions = {
-        { name = "Shadowlands", id = 8 },
-        { name = "Battle for Azeroth", id = 7 },
-        { name = "Dragonflight", id = 10 },
-        { name = "The War Within", id = 9 },
-    }
-
-    for _, expansion in ipairs(expansions) do
-        GetExpansionProgress(expansion.id, expansion.name)
+    for _, expansion in ipairs(BtWQuestsDatabase:GetExpansionList()) do
+        GetExpansionProgress(expansion:GetID(), expansion:GetName())
     end
 end
 
 function StoryProgress:PrintAllExpansions()
-    local expansions = {
-        { name = "Shadowlands", id = 8 },
-        { name = "Battle for Azeroth", id = 7 },
-        { name = "Dragonflight", id = 10 },
-        { name = "The War Within", id = 9 },
-    }
-
     Log("=== Story Progress Summary ===")
-    for _, expansion in ipairs(expansions) do
-        self:PrintProgress(expansion.name, expansion.id)
+    for _, expansion in ipairs(BtWQuestsDatabase:GetExpansionList()) do
+        self:PrintProgress(expansion:GetName(), expansion:GetID())
     end
     Log("==============================")
 end
