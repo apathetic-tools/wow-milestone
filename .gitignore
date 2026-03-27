@@ -1,4 +1,5 @@
 _reference/
+_external/
 
 # Build artifacts
 dist/
