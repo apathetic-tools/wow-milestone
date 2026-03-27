@@ -42,3 +42,5 @@ coverage/
 *.bak
 *.orig
 *.tmp
+
+dev/install.sh

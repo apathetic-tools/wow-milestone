@@ -1,8 +1,21 @@
-## Interface: 110005
+## Interface: 110205, 110207, 120000
 ## Title: Story Progress
-## Author:
+## Author: InertSloth
 ## Version: 1.0.0
-## Description: Track your World of Warcraft story progression
+## Description: Report your story progression (uses BtWQuests)
+## IconTexture: Interface\QuestFrame\UI-QuestLog-BookIcon
+## Dependencies: BtWQuests
 ## SavedVariables: StoryProgressDB
+## Category-enUS: Quests
+## Category-deDE: Quests
+## Category-esES: Misiones
+## Category-esMX: Misiones
+## Category-frFR: Quêtes
+## Category-itIT: Missioni
+## Category-koKR: 퀘스트
+## Category-ptBR: Missões
+## Category-ruRU: Задания
+## Category-zhCN: 任务
+## Category-zhTW: 任務
 
 Core.lua
