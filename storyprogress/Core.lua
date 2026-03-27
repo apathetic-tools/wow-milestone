@@ -24,6 +24,22 @@ local function Log(message)
     print("|cFFFFD700[" .. addonName .. "]|r " .. message)
 end
 
+-- GUI state and constants
+local serverCollapsed = {}  -- tracks collapsed state: serverCollapsed[realm] = true/false
+
+local EXPANSION_ACRONYMS = {
+    [0]="Vanilla", [1]="TBC", [2]="WotLK", [3]="Cata", [4]="MoP",
+    [5]="WoD", [6]="Legion", [7]="BfA", [8]="SL", [9]="DF",
+    [10]="TWW", [11]="Mid",
+}
+
+local ROW_HEIGHT = 20
+local COL_TOGGLE = 20
+local COL_NAME   = 140
+local COL_LEVEL  = 40
+local COL_EXP    = 50   -- per expansion column
+local PADDING    = 20   -- left/right padding
+
 local function CountQuestsRecursive(item, character, database, depth, visited)
     local funcName = "CountQuestsRecursive"
     depth = depth or 0
@@ -246,15 +262,275 @@ function StoryProgress:PrintAllExpansions()
     Log("==============================")
 end
 
+function StoryProgress:CollectData()
+    local data = {
+        expansions = {},
+        servers = {},
+    }
+
+    -- Get expansions
+    for _, expansion in ipairs(BtWQuestsDatabase:GetExpansionList()) do
+        local id = expansion:GetID()
+        local name = expansion:GetName()
+        local acronym = EXPANSION_ACRONYMS[id] or name
+        table.insert(data.expansions, {id=id, name=name, acronym=acronym})
+    end
+
+    -- Get player character
+    local player = BtWQuestsCharacters:GetPlayer()
+    if not player then
+        return data
+    end
+
+    local realm = player:GetRealm()
+    if not data.servers[realm] then
+        data.servers[realm] = {characters = {}}
+    end
+
+    -- Build character data
+    local char = {
+        name = player:GetName(),
+        level = player:GetLevel(),
+        classFile = player:GetClassString(),
+        classColor = RAID_CLASS_COLORS[player:GetClassString()],
+        expansionData = {},
+    }
+
+    -- Get expansion progress for this character
+    for _, expInfo in ipairs(data.expansions) do
+        local completed, total = GetExpansionProgress(expInfo.id, expInfo.name)
+        char.expansionData[expInfo.id] = {
+            completed = completed or 0,
+            total = total or 0,
+            pct = (total and total > 0) and math.floor((completed / total) * 100) or 0,
+        }
+    end
+
+    table.insert(data.servers[realm].characters, char)
+    return data
+end
+
+function StoryProgress:RefreshRows(data)
+    if not self.scrollFrame or not self.contentFrame then
+        return
+    end
+
+    -- Clear existing rows
+    for i = #(self.rows or {}), 1, -1 do
+        self.rows[i]:Hide()
+    end
+    self.rows = {}
+
+    local y = 0
+    local contentFrame = self.contentFrame
+    data = data or self:CollectData()
+
+    -- Build rows for each server
+    for realm, serverData in pairs(data.servers) do
+        local isCollapsed = serverCollapsed[realm]
+
+        -- Server header row
+        do
+            local serverRow = CreateFrame("Frame", nil, contentFrame)
+            serverRow:SetSize(contentFrame:GetWidth(), ROW_HEIGHT)
+            serverRow:SetPoint("TOPLEFT", contentFrame, "TOPLEFT", 0, -y)
+
+            -- Toggle button
+            local toggleBtn = CreateFrame("Button", nil, serverRow)
+            toggleBtn:SetSize(16, 16)
+            toggleBtn:SetPoint("TOPLEFT", serverRow, "TOPLEFT", PADDING, -2)
+            toggleBtn:SetNormalTexture(isCollapsed and "Interface\\Buttons\\UI-PlusButton-Up" or "Interface\\Buttons\\UI-MinusButton-Up")
+            toggleBtn:SetHighlightTexture("Interface\\Buttons\\UI-PlusButton-Hilight", "ADD")
+            toggleBtn:SetScript("OnClick", function()
+                serverCollapsed[realm] = not serverCollapsed[realm]
+                self:RefreshRows(data)
+            end)
+
+            -- Server name label
+            local serverLabel = serverRow:CreateFontString(nil, "OVERLAY")
+            serverLabel:SetFont("Fonts/FRIZQT__.TTF", 11, "OUTLINE")
+            serverLabel:SetPoint("TOPLEFT", serverRow, "TOPLEFT", PADDING + COL_TOGGLE + 5, -2)
+            serverLabel:SetText(realm)
+            serverLabel:SetTextColor(1, 1, 0, 1)  -- yellow
+
+            table.insert(self.rows, serverRow)
+        end
+
+        y = y + ROW_HEIGHT
+
+        -- Character rows
+        if not isCollapsed then
+            for _, char in ipairs(serverData.characters) do
+                local charRow = CreateFrame("Frame", nil, contentFrame)
+                charRow:SetSize(contentFrame:GetWidth(), ROW_HEIGHT)
+                charRow:SetPoint("TOPLEFT", contentFrame, "TOPLEFT", 0, -y)
+
+                -- Name column (class-colored)
+                local className = LOCALIZED_CLASS_NAMES_MALE[char.classFile] or char.classFile
+                local nameLabel = charRow:CreateFontString(nil, "OVERLAY")
+                nameLabel:SetFont("Fonts/FRIZQT__.TTF", 11, "OUTLINE")
+                nameLabel:SetPoint("TOPLEFT", charRow, "TOPLEFT", PADDING + COL_TOGGLE, -2)
+                nameLabel:SetWidth(COL_NAME - 5)
+                nameLabel:SetText(char.name .. " (" .. className .. ")")
+                if char.classColor then
+                    nameLabel:SetTextColor(char.classColor.r, char.classColor.g, char.classColor.b)
+                end
+
+                -- Level column
+                local levelLabel = charRow:CreateFontString(nil, "OVERLAY")
+                levelLabel:SetFont("Fonts/FRIZQT__.TTF", 11, "OUTLINE")
+                levelLabel:SetPoint("TOPLEFT", charRow, "TOPLEFT", PADDING + COL_TOGGLE + COL_NAME, -2)
+                levelLabel:SetWidth(COL_LEVEL)
+                levelLabel:SetJustifyH("CENTER")
+                levelLabel:SetText(tostring(char.level))
+
+                -- Expansion columns
+                for idx, expInfo in ipairs(data.expansions) do
+                    -- Capture values in local scope to avoid closure issues
+                    local completed = char.expansionData[expInfo.id].completed
+                    local total = char.expansionData[expInfo.id].total
+                    local pct = char.expansionData[expInfo.id].pct
+                    local xPos = PADDING + COL_TOGGLE + COL_NAME + COL_LEVEL + ((idx - 1) * COL_EXP)
+
+                    local expLabel = charRow:CreateFontString(nil, "OVERLAY")
+                    expLabel:SetFont("Fonts/FRIZQT__.TTF", 11, "OUTLINE")
+                    expLabel:SetPoint("TOPLEFT", charRow, "TOPLEFT", xPos, -2)
+                    expLabel:SetWidth(COL_EXP)
+                    expLabel:SetJustifyH("CENTER")
+                    expLabel:SetText(pct .. "%")
+
+                    -- Create a button frame for tooltip interaction
+                    local tooltipBtn = CreateFrame("Button", nil, charRow)
+                    tooltipBtn:SetPoint("TOPLEFT", charRow, "TOPLEFT", xPos, 0)
+                    tooltipBtn:SetSize(COL_EXP, ROW_HEIGHT)
+                    tooltipBtn:SetScript("OnEnter", function()
+                        GameTooltip:SetOwner(tooltipBtn, "ANCHOR_RIGHT")
+                        GameTooltip:AddLine(completed .. " of " .. total .. " quests")
+                        GameTooltip:Show()
+                    end)
+                    tooltipBtn:SetScript("OnLeave", function()
+                        GameTooltip:Hide()
+                    end)
+                end
+
+                table.insert(self.rows, charRow)
+                y = y + ROW_HEIGHT
+            end
+        end
+    end
+
+    -- Update content frame height
+    self.contentFrame:SetHeight(y)
+    self.scrollFrame:UpdateScrollChildRect()
+
+    -- Position totals row
+    self:RefreshTotalsRow(data)
+end
+
+function StoryProgress:RefreshTotalsRow(data)
+    if not self.totalsRow then
+        return
+    end
+
+    data = data or self:CollectData()
+
+    -- Clear existing totals labels
+    for i = 1, 12 do
+        if self.totalsLabels and self.totalsLabels[i] then
+            self.totalsLabels[i]:SetText("")
+        end
+    end
+
+    -- Calculate totals (max % per expansion across all characters)
+    local totals = {}
+    for _, serverData in pairs(data.servers) do
+        for _, char in ipairs(serverData.characters) do
+            for expId, expData in pairs(char.expansionData) do
+                if not totals[expId] or expData.pct > totals[expId].pct then
+                    totals[expId] = {pct = expData.pct, completed = expData.completed, total = expData.total}
+                end
+            end
+        end
+    end
+
+    -- Clear old labels
+    if self.totalsLabelFrame then
+        self.totalsLabelFrame:Hide()
+        self.totalsLabelFrame = nil
+    end
+
+    -- Create new totals labels
+    local labelFrame = CreateFrame("Frame", nil, self.totalsRow)
+    labelFrame:SetSize(self.totalsRow:GetWidth(), ROW_HEIGHT)
+    labelFrame:SetPoint("TOPLEFT", self.totalsRow, "TOPLEFT", 0, 0)
+    self.totalsLabelFrame = labelFrame
+
+    -- "Totals" label
+    local totalsLabel = labelFrame:CreateFontString(nil, "OVERLAY")
+    totalsLabel:SetFont("Fonts/FRIZQT__.TTF", 11, "OUTLINE")
+    totalsLabel:SetPoint("TOPLEFT", labelFrame, "TOPLEFT", PADDING + COL_TOGGLE, -2)
+    totalsLabel:SetText("Totals")
+    totalsLabel:SetTextColor(1, 1, 0, 1)  -- yellow
+
+    -- Expansion totals
+    self.totalsLabels = {}
+    for idx, expInfo in ipairs(data.expansions) do
+        local totalData = totals[expInfo.id]
+        local pctStr = totalData and (totalData.pct .. "%") or "0%"
+        local xPos = PADDING + COL_TOGGLE + COL_NAME + COL_LEVEL + ((idx - 1) * COL_EXP)
+
+        local totalExpLabel = labelFrame:CreateFontString(nil, "OVERLAY")
+        totalExpLabel:SetFont("Fonts/FRIZQT__.TTF", 11, "OUTLINE")
+        totalExpLabel:SetPoint("TOPLEFT", labelFrame, "TOPLEFT", xPos, -2)
+        totalExpLabel:SetWidth(COL_EXP)
+        totalExpLabel:SetJustifyH("CENTER")
+        totalExpLabel:SetText(pctStr)
+        self.totalsLabels[idx] = totalExpLabel
+
+        -- Tooltip button for totals
+        local totalTooltipBtn = CreateFrame("Button", nil, labelFrame)
+        totalTooltipBtn:SetPoint("TOPLEFT", labelFrame, "TOPLEFT", xPos, 0)
+        totalTooltipBtn:SetSize(COL_EXP, ROW_HEIGHT)
+        if totalData then
+            -- Capture values to avoid closure issues
+            local completedVal = totalData.completed
+            local totalVal = totalData.total
+            totalTooltipBtn:SetScript("OnEnter", function()
+                GameTooltip:SetOwner(totalTooltipBtn, "ANCHOR_RIGHT")
+                GameTooltip:AddLine(completedVal .. " of " .. totalVal .. " quests")
+                GameTooltip:Show()
+            end)
+        end
+        totalTooltipBtn:SetScript("OnLeave", function()
+            GameTooltip:Hide()
+        end)
+    end
+
+    self.totalsLabelFrame:Show()
+end
+
 function StoryProgress:CreateGUI()
     if self.mainFrame and self.mainFrame:IsShown() then
         self.mainFrame:Hide()
         return
     end
 
+    if self.mainFrame and not self.mainFrame:IsShown() then
+        -- Frame exists but is hidden, just show it and refresh
+        self.mainFrame:Show()
+        local data = self:CollectData()
+        self:RefreshRows(data)
+        return
+    end
+
+    -- Collect data to determine window width
+    local data = self:CollectData()
+    local windowWidth = PADDING + COL_TOGGLE + COL_NAME + COL_LEVEL + (#data.expansions * COL_EXP) + PADDING
+    windowWidth = max(500, windowWidth)  -- minimum width
+
     -- Create main window
     local mainFrame = CreateFrame("Frame", "StoryProgressMainFrame", UIParent, "BackdropTemplate")
-    mainFrame:SetSize(500, 400)
+    mainFrame:SetSize(windowWidth, 400)
     mainFrame:SetPoint("CENTER")
     mainFrame:SetBackdrop({
         bgFile = "Interface/Tooltips/UI-Tooltip-Background",
@@ -283,37 +559,86 @@ function StoryProgress:CreateGUI()
     local closeBtn = CreateFrame("Button", nil, mainFrame, "UIPanelCloseButton")
     closeBtn:SetPoint("TOPRIGHT", mainFrame, "TOPRIGHT", -5, -5)
 
+    -- Create header row (column labels)
+    local headerRow = CreateFrame("Frame", nil, mainFrame)
+    headerRow:SetSize(windowWidth - 20, ROW_HEIGHT)
+    headerRow:SetPoint("TOPLEFT", mainFrame, "TOPLEFT", 10, -35)
+
+    -- Column headers
+    local nameHeader = headerRow:CreateFontString(nil, "OVERLAY")
+    nameHeader:SetFont("Fonts/FRIZQT__.TTF", 11, "OUTLINE")
+    nameHeader:SetPoint("TOPLEFT", headerRow, "TOPLEFT", COL_TOGGLE, -2)
+    nameHeader:SetText("Name")
+    nameHeader:SetTextColor(1, 1, 1, 1)  -- white
+
+    local levelHeader = headerRow:CreateFontString(nil, "OVERLAY")
+    levelHeader:SetFont("Fonts/FRIZQT__.TTF", 11, "OUTLINE")
+    levelHeader:SetPoint("TOPLEFT", headerRow, "TOPLEFT", COL_TOGGLE + COL_NAME, -2)
+    levelHeader:SetWidth(COL_LEVEL)
+    levelHeader:SetJustifyH("CENTER")
+    levelHeader:SetText("Level")
+    levelHeader:SetTextColor(1, 1, 1, 1)  -- white
+
+    -- Expansion headers with tooltips
+    for idx, expInfo in ipairs(data.expansions) do
+        -- Capture values to avoid closure issues
+        local fullName = expInfo.name
+        local xPos = COL_TOGGLE + COL_NAME + COL_LEVEL + ((idx - 1) * COL_EXP)
+
+        local expHeader = headerRow:CreateFontString(nil, "OVERLAY")
+        expHeader:SetFont("Fonts/FRIZQT__.TTF", 11, "OUTLINE")
+        expHeader:SetPoint("TOPLEFT", headerRow, "TOPLEFT", xPos, -2)
+        expHeader:SetWidth(COL_EXP)
+        expHeader:SetJustifyH("CENTER")
+        expHeader:SetText(expInfo.acronym)
+        expHeader:SetTextColor(1, 1, 1, 1)  -- white
+
+        -- Create a button for tooltip interaction
+        local headerBtn = CreateFrame("Button", nil, headerRow)
+        headerBtn:SetPoint("TOPLEFT", headerRow, "TOPLEFT", xPos, 0)
+        headerBtn:SetSize(COL_EXP, ROW_HEIGHT)
+        headerBtn:SetScript("OnEnter", function()
+            GameTooltip:SetOwner(headerBtn, "ANCHOR_RIGHT")
+            GameTooltip:AddLine(fullName)
+            GameTooltip:Show()
+        end)
+        headerBtn:SetScript("OnLeave", function()
+            GameTooltip:Hide()
+        end)
+    end
+
     -- Create scroll frame
     local scrollFrame = CreateFrame("ScrollFrame", nil, mainFrame)
-    scrollFrame:SetPoint("TOPLEFT", mainFrame, "TOPLEFT", 10, -35)
-    scrollFrame:SetPoint("BOTTOMRIGHT", mainFrame, "BOTTOMRIGHT", -10, 10)
+    scrollFrame:SetPoint("TOPLEFT", mainFrame, "TOPLEFT", 10, -60)
+    scrollFrame:SetPoint("BOTTOMRIGHT", mainFrame, "BOTTOMRIGHT", -10, 30)
     scrollFrame:SetScript("OnMouseWheel", function(scrollSelf, delta)
         local newValue = scrollSelf:GetVerticalScroll() - delta * 20
         scrollSelf:SetVerticalScroll(max(0, min(newValue, scrollSelf.scrollChild:GetHeight() - scrollSelf:GetHeight())))
     end)
     scrollFrame:EnableMouseWheel(true)
 
-    -- Create text frame for scrolling content
-    local textFrame = CreateFrame("Frame", nil, scrollFrame)
-    textFrame:SetSize(scrollFrame:GetWidth(), 1)
-    scrollFrame:SetScrollChild(textFrame)
+    -- Create content frame for scrolling
+    local contentFrame = CreateFrame("Frame", nil, scrollFrame)
+    contentFrame:SetSize(windowWidth - 20, 1)
+    scrollFrame:SetScrollChild(contentFrame)
 
-    -- Create the text display
-    local textDisplay = textFrame:CreateFontString(nil, "OVERLAY")
-    textDisplay:SetFont("Fonts/FRIZQT__.TTF", 11, "OUTLINE")
-    textDisplay:SetPoint("TOPLEFT", textFrame, "TOPLEFT", 5, -5)
-    textDisplay:SetPoint("RIGHT", textFrame, "RIGHT", -10, 0)
-    textDisplay:SetJustifyH("LEFT")
-    textDisplay:SetJustifyV("TOP")
-    textDisplay:SetTextColor(1, 1, 1, 1)
+    -- Create totals row (fixed at bottom)
+    local totalsRow = CreateFrame("Frame", nil, mainFrame)
+    totalsRow:SetSize(windowWidth - 20, ROW_HEIGHT)
+    totalsRow:SetPoint("BOTTOMLEFT", mainFrame, "BOTTOMLEFT", 10, 10)
 
-    -- Set the progress text
-    local progressText = self:GetAllExpansionsText()
-    textDisplay:SetText(progressText)
-    textFrame:SetHeight(textDisplay:GetHeight() + 10)
-    scrollFrame:UpdateScrollChildRect()
-
+    -- Store references for refresh
     self.mainFrame = mainFrame
+    self.scrollFrame = scrollFrame
+    self.contentFrame = contentFrame
+    self.totalsRow = totalsRow
+    self.rows = {}
+    self.totalsLabels = {}
+
+    -- Build the rows and totals
+    self:RefreshRows(data)
+    self:RefreshTotalsRow(data)
+
     mainFrame:Show()
 end
 
