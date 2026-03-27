@@ -1,0 +1,8 @@
+## Interface: 110005
+## Title: Story Progress
+## Author:
+## Version: 1.0.0
+## Description: Track your World of Warcraft story progression
+## SavedVariables: StoryProgressDB
+
+Core.lua
