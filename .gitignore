@@ -1,1 +1,44 @@
 _reference/
+
+# Build artifacts
+dist/
+build/
+*.zip
+*.tar.gz
+
+# Minified/compiled Lua
+*.min.lua
+
+# Editor/IDE
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+.luarc.json
+!.vscode/extensions.json
+
+# OS files
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+
+# Dev dependencies
+node_modules/
+package-lock.json
+yarn.lock
+
+# Lua package managers
+luarocks/
+.luarocks/
+
+# Linting/testing output
+.luacheck-results
+coverage/
+*.gcov
+
+# Temporary files
+*.bak
+*.orig
+*.tmp
