@@ -1,5 +1,6 @@
 _reference/
 _external/
+dev/config.local.sh
 
 # Build artifacts
 dist/
@@ -43,5 +44,3 @@ coverage/
 *.bak
 *.orig
 *.tmp
-
-dev/install.sh
