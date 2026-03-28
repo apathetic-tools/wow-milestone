@@ -1,10 +1,15 @@
 local addonName, addonTable = ...
 
---luacheck: globals BtWQuestsDatabase BtWQuestsCharacters SLASH_STORYPROGRESS1 SlashCmdList
+--luacheck: globals BtWQuestsDatabase BtWQuestsCharacters SLASH_STORYPROGRESS1 SlashCmdList StoryProgressDB
 
 -- Initialize addon
 local StoryProgress = {}
 addonTable.StoryProgress = StoryProgress
+
+-- Initialize SavedVariables if needed
+if not StoryProgressDB then
+    StoryProgressDB = {}
+end
 
 -- Per-function debug flags - set to true to enable logging for a specific function
 local debugFlags = {}
@@ -262,6 +267,48 @@ function StoryProgress:PrintAllExpansions()
     Log("==============================")
 end
 
+function StoryProgress:SaveCharacterData()
+    local funcName = "SaveCharacterData"
+    local player = BtWQuestsCharacters:GetPlayer()
+    if not player then
+        DebugLog(funcName, "Could not get player character")
+        return
+    end
+
+    local realm = player:GetRealm()
+    local charName = player:GetName()
+
+    -- Initialize realm table if needed
+    if not StoryProgressDB[realm] then
+        StoryProgressDB[realm] = {}
+    end
+
+    -- Build character data with expansion progress
+    local char = {
+        name = charName,
+        level = player:GetLevel(),
+        classFile = player:GetClassString(),
+        expansionData = {},
+        lastUpdated = time(),
+    }
+
+    -- Get expansion progress for this character
+    for _, expansion in ipairs(BtWQuestsDatabase:GetExpansionList()) do
+        local expId = expansion:GetID()
+        local expName = expansion:GetName()
+        local completed, total = GetExpansionProgress(expId, expName)
+        char.expansionData[expId] = {
+            completed = completed or 0,
+            total = total or 0,
+            pct = (total and total > 0) and math.floor((completed / total) * 100) or 0,
+        }
+    end
+
+    -- Save to DB
+    StoryProgressDB[realm][charName] = char
+    DebugLog(funcName, "Saved " .. charName .. " on realm " .. realm)
+end
+
 function StoryProgress:CollectData()
     local data = {
         expansions = {},
@@ -276,37 +323,24 @@ function StoryProgress:CollectData()
         table.insert(data.expansions, {id=id, name=name, acronym=acronym})
     end
 
-    -- Get player character
-    local player = BtWQuestsCharacters:GetPlayer()
-    if not player then
-        return data
+    -- Load all characters from SavedVariables
+    for realm, characters in pairs(StoryProgressDB) do
+        if not data.servers[realm] then
+            data.servers[realm] = {characters = {}}
+        end
+
+        for charName, charData in pairs(characters) do
+            local char = {
+                name = charData.name,
+                level = charData.level,
+                classFile = charData.classFile,
+                classColor = RAID_CLASS_COLORS[charData.classFile],
+                expansionData = charData.expansionData,
+            }
+            table.insert(data.servers[realm].characters, char)
+        end
     end
 
-    local realm = player:GetRealm()
-    if not data.servers[realm] then
-        data.servers[realm] = {characters = {}}
-    end
-
-    -- Build character data
-    local char = {
-        name = player:GetName(),
-        level = player:GetLevel(),
-        classFile = player:GetClassString(),
-        classColor = RAID_CLASS_COLORS[player:GetClassString()],
-        expansionData = {},
-    }
-
-    -- Get expansion progress for this character
-    for _, expInfo in ipairs(data.expansions) do
-        local completed, total = GetExpansionProgress(expInfo.id, expInfo.name)
-        char.expansionData[expInfo.id] = {
-            completed = completed or 0,
-            total = total or 0,
-            pct = (total and total > 0) and math.floor((completed / total) * 100) or 0,
-        }
-    end
-
-    table.insert(data.servers[realm].characters, char)
     return data
 end
 
@@ -553,6 +587,7 @@ function StoryProgress:CreateGUI()
     mainFrame:SetBackdropColor(0, 0, 0, 0.8)
     mainFrame:SetBackdropBorderColor(1, 1, 1, 0.3)
     mainFrame:SetMovable(true)
+    mainFrame:SetResizable(true)
     mainFrame:EnableMouse(true)
     mainFrame:RegisterForDrag("LeftButton")
     mainFrame:SetScript("OnDragStart", mainFrame.StartMoving)
@@ -568,6 +603,23 @@ function StoryProgress:CreateGUI()
     -- Create close button
     local closeBtn = CreateFrame("Button", nil, mainFrame, "UIPanelCloseButton")
     closeBtn:SetPoint("TOPRIGHT", mainFrame, "TOPRIGHT", -5, -5)
+
+    -- Create resize handle in bottom-right corner
+    local resizeBtn = CreateFrame("Button", nil, mainFrame)
+    resizeBtn:SetSize(16, 16)
+    resizeBtn:SetPoint("BOTTOMRIGHT", mainFrame, "BOTTOMRIGHT", -2, 2)
+    resizeBtn:SetNormalTexture("Interface/ChatFrame/UI-ChatIM-ResizeGrabber-Corner")
+    resizeBtn:GetNormalTexture():SetDesaturated(false)
+    resizeBtn:SetHighlightTexture("Interface/ChatFrame/UI-ChatIM-ResizeGrabber-Corner")
+    resizeBtn:GetHighlightTexture():SetAlpha(0.8)
+    resizeBtn:SetScript("OnMouseDown", function(self, button)
+        if button == "LeftButton" then
+            mainFrame:StartSizing("BOTTOMRIGHT")
+        end
+    end)
+    resizeBtn:SetScript("OnMouseUp", function()
+        mainFrame:StopMovingOrSizing()
+    end)
 
     -- Create header row (column labels)
     local headerRow = CreateFrame("Frame", nil, mainFrame)
@@ -670,18 +722,27 @@ function StoryProgress:OnLoad()
     self:CalculateAllExpansions()
 end
 
+function StoryProgress:OnPlayerLogin()
+    Log("Player logged in - saving character data")
+    self:SaveCharacterData()
+end
+
 -- Slash command handler
 SLASH_STORYPROGRESS1 = "/storyprogress"
 
 SlashCmdList["STORYPROGRESS"] = function()
+    StoryProgress:SaveCharacterData()
     StoryProgress:CreateGUI()
 end
 
 -- Register for addon load event
 local frame = CreateFrame("Frame")
 frame:RegisterEvent("ADDON_LOADED")
+frame:RegisterEvent("PLAYER_LOGIN")
 frame:SetScript("OnEvent", function(self, event, loadedAddon)
-    if loadedAddon == addonName then
+    if event == "ADDON_LOADED" and loadedAddon == addonName then
         StoryProgress:OnLoad()
+    elseif event == "PLAYER_LOGIN" then
+        StoryProgress:OnPlayerLogin()
     end
 end)
