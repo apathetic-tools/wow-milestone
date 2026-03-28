@@ -728,7 +728,7 @@ function StoryProgress:OnPlayerLogin()
 end
 
 -- Slash command handler
-SLASH_STORYPROGRESS1 = "/storyprogress"
+SLASH_STORYPROGRESS1 = "/milestone"
 
 SlashCmdList["STORYPROGRESS"] = function()
     StoryProgress:SaveCharacterData()

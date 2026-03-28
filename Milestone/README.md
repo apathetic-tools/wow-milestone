@@ -4,7 +4,7 @@ A World of Warcraft addon to track your story progression.
 
 ## Structure
 
-- **storyprogress.toc** - Addon manifest file (tells WoW about the addon)
+- **milestone.toc** - Addon manifest file (tells WoW about the addon)
 - **Core.lua** - Main addon entry point
 - **Libs/** - For embedded libraries (LibStub, etc.)
 - **Locales/** - Localization files
@@ -12,7 +12,7 @@ A World of Warcraft addon to track your story progression.
 
 ## Installation
 
-1. Copy the `storyprogress` folder to your WoW `Addons` directory:
+1. Copy the `Milestone` folder to your WoW `Addons` directory:
    - Windows: `C:\Program Files (x86)\World of Warcraft\_retail_\Interface\AddOns\`
    - Mac: `/Applications/World of Warcraft/_retail_/Interface/AddOns/`
    - Linux: Your WoW installation directory
@@ -23,6 +23,6 @@ A World of Warcraft addon to track your story progression.
 
 ## Development
 
-- Edit files in the `storyprogress/` folder
+- Edit files in the `Milestone/` folder
 - Reload addon with `/reload` command in-game
 - Check the chat for debug messages
