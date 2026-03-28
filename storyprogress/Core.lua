@@ -567,13 +567,13 @@ function StoryProgress:CreateGUI()
     -- Column headers
     local nameHeader = headerRow:CreateFontString(nil, "OVERLAY")
     nameHeader:SetFont("Fonts/FRIZQT__.TTF", 11, "OUTLINE")
-    nameHeader:SetPoint("TOPLEFT", headerRow, "TOPLEFT", COL_TOGGLE, -2)
+    nameHeader:SetPoint("TOPLEFT", headerRow, "TOPLEFT", PADDING + COL_TOGGLE, -2)
     nameHeader:SetText("Name")
     nameHeader:SetTextColor(1, 1, 1, 1)  -- white
 
     local levelHeader = headerRow:CreateFontString(nil, "OVERLAY")
     levelHeader:SetFont("Fonts/FRIZQT__.TTF", 11, "OUTLINE")
-    levelHeader:SetPoint("TOPLEFT", headerRow, "TOPLEFT", COL_TOGGLE + COL_NAME, -2)
+    levelHeader:SetPoint("TOPLEFT", headerRow, "TOPLEFT", PADDING + COL_TOGGLE + COL_NAME, -2)
     levelHeader:SetWidth(COL_LEVEL)
     levelHeader:SetJustifyH("CENTER")
     levelHeader:SetText("Level")
@@ -583,7 +583,7 @@ function StoryProgress:CreateGUI()
     for idx, expInfo in ipairs(data.expansions) do
         -- Capture values to avoid closure issues
         local fullName = expInfo.name
-        local xPos = COL_TOGGLE + COL_NAME + COL_LEVEL + ((idx - 1) * COL_EXP)
+        local xPos = PADDING + COL_TOGGLE + COL_NAME + COL_LEVEL + ((idx - 1) * COL_EXP)
 
         local expHeader = headerRow:CreateFontString(nil, "OVERLAY")
         expHeader:SetFont("Fonts/FRIZQT__.TTF", 11, "OUTLINE")
