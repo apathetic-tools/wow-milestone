@@ -404,8 +404,16 @@ function StoryProgress:RefreshRows(data)
                     tooltipBtn:SetPoint("TOPLEFT", charRow, "TOPLEFT", xPos, 0)
                     tooltipBtn:SetSize(COL_EXP, ROW_HEIGHT)
                     tooltipBtn:SetScript("OnEnter", function()
+                        local charNameWithClass = char.name .. " (" .. className .. ")"
+                        local classColor = char.classColor
                         GameTooltip:SetOwner(tooltipBtn, "ANCHOR_RIGHT")
-                        GameTooltip:AddLine(completed .. " of " .. total .. " quests")
+                        GameTooltip:AddLine(expInfo.name)
+                        if classColor then
+                            GameTooltip:AddLine(charNameWithClass, classColor.r, classColor.g, classColor.b)
+                        else
+                            GameTooltip:AddLine(charNameWithClass)
+                        end
+                        GameTooltip:AddLine(completed .. " of " .. total .. " quests", 1, 1, 1)
                         GameTooltip:Show()
                     end)
                     tooltipBtn:SetScript("OnLeave", function()
@@ -493,11 +501,13 @@ function StoryProgress:RefreshTotalsRow(data)
         totalTooltipBtn:SetSize(COL_EXP, ROW_HEIGHT)
         if totalData then
             -- Capture values to avoid closure issues
+            local fullName = expInfo.name
             local completedVal = totalData.completed
             local totalVal = totalData.total
             totalTooltipBtn:SetScript("OnEnter", function()
                 GameTooltip:SetOwner(totalTooltipBtn, "ANCHOR_RIGHT")
-                GameTooltip:AddLine(completedVal .. " of " .. totalVal .. " quests")
+                GameTooltip:AddLine(fullName)
+                GameTooltip:AddLine(completedVal .. " of " .. totalVal .. " quests", 1, 1, 1)
                 GameTooltip:Show()
             end)
         end
@@ -585,6 +595,18 @@ function StoryProgress:CreateGUI()
         local fullName = expInfo.name
         local xPos = PADDING + COL_TOGGLE + COL_NAME + COL_LEVEL + ((idx - 1) * COL_EXP)
 
+        -- Get total quests for this expansion from any character
+        local totalQuests = 0
+        for _, serverData in pairs(data.servers) do
+            for _, char in ipairs(serverData.characters) do
+                if char.expansionData[expInfo.id] then
+                    totalQuests = char.expansionData[expInfo.id].total
+                    break
+                end
+            end
+            if totalQuests > 0 then break end
+        end
+
         local expHeader = headerRow:CreateFontString(nil, "OVERLAY")
         expHeader:SetFont("Fonts/FRIZQT__.TTF", 11, "OUTLINE")
         expHeader:SetPoint("TOPLEFT", headerRow, "TOPLEFT", xPos, -2)
@@ -600,6 +622,7 @@ function StoryProgress:CreateGUI()
         headerBtn:SetScript("OnEnter", function()
             GameTooltip:SetOwner(headerBtn, "ANCHOR_RIGHT")
             GameTooltip:AddLine(fullName)
+            GameTooltip:AddLine(totalQuests .. " total quests", 1, 1, 1)
             GameTooltip:Show()
         end)
         headerBtn:SetScript("OnLeave", function()
